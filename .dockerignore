@@ -1,0 +1,47 @@
+# Keeps the Docker build context (repo root, per infra/docker/*.Dockerfile)
+# small and reproducible. All Dockerfiles run `turbo prune` first, so the
+# only things they actually need from the build context are source files,
+# package.json/lockfile, and workspace config -- never build artifacts,
+# local dependency trees, or local secrets.
+
+# Dependencies (reinstalled inside the image from the lockfile)
+node_modules/
+.pnpm-store/
+
+# Build outputs (rebuilt inside the image)
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Env / secrets -- never send local .env files into an image build context
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Terraform local state (infra/terraform is documentation-only in this repo,
+# but keep the ignore in case that changes)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# VCS / agent orchestration
+.git/
+.claude/
