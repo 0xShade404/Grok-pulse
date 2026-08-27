@@ -10,12 +10,14 @@
 # per-service conventions used by every other service in this repo:
 #   - package name `@grokpulse/backtester` (services/<dir-name> scoped)
 #   - `tsc -p tsconfig.json` build emitting to `dist/`
-#   - a CLI entrypoint at `src/index.ts` -> `dist/index.js` that runs one
-#     backtest (strategy version + date range + risk config) and exits
-# If the real package differs from these conventions once merged, update the
-# `turbo prune`/`--filter` package name and the final ENTRYPOINT path
-# accordingly -- everything else in this file (the prune/install/build/
-# prod-install shape) should not need to change.
+#   - a CLI entrypoint that runs one backtest (strategy version + date range
+#     + risk config) and exits
+#
+# UPDATE (now that the real package has landed): `src/index.ts` is a plain
+# barrel (`export * from "./types.js"` etc, a library surface for other
+# packages/tests to import) -- it is NOT runnable. The actual CLI lives at
+# `src/cli.ts` -> `dist/cli.js` (see the package's own `"cli"` npm script:
+# `node dist/cli.js`). ENTRYPOINT below has been corrected accordingly.
 #
 # Per CLAUDE.md section 32, a backtest run is a one-shot replay over
 # historical data, not a resident service -- so this image uses ENTRYPOINT
@@ -95,4 +97,4 @@ RUN --mount=type=bind,from=builder,source=/app,target=/builder-out \
 RUN chown -R node:node /app
 
 USER node
-ENTRYPOINT ["node", "services/backtester/dist/index.js"]
+ENTRYPOINT ["node", "services/backtester/dist/cli.js"]
