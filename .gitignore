@@ -42,3 +42,7 @@ Thumbs.db
 # Misc
 *.pem
 .vercel
+
+# Claude Code agent orchestration state (isolated worktrees for background
+# subagents) -- not part of the project, never commit.
+.claude/
