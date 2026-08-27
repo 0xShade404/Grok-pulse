@@ -26,6 +26,8 @@ export interface CreateLoggerOptions {
   service: string;
   environment: string;
   level?: string;
+  /** Optional destination override, primarily for tests -- defaults to stdout. */
+  destination?: NodeJS.WritableStream;
 }
 
 /**
@@ -34,7 +36,7 @@ export interface CreateLoggerOptions {
  * for not logging them in the first place (CLAUDE.md section 80).
  */
 export function createLogger(options: CreateLoggerOptions) {
-  return pino({
+  const pinoOptions = {
     level: options.level ?? "info",
     base: {
       service: options.service,
@@ -45,7 +47,8 @@ export function createLogger(options: CreateLoggerOptions) {
       paths: REDACT_PATHS,
       censor: "[REDACTED]",
     },
-  });
+  };
+  return options.destination ? pino(pinoOptions, options.destination) : pino(pinoOptions);
 }
 
 export type Logger = ReturnType<typeof createLogger>;
