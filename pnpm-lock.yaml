@@ -266,6 +266,74 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
 
+  services/market-scanner:
+    dependencies:
+      '@grokpulse/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@grokpulse/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@grokpulse/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
+      '@grokpulse/polymarket':
+        specifier: workspace:*
+        version: link:../../packages/polymarket
+      '@grokpulse/redis':
+        specifier: workspace:*
+        version: link:../../packages/redis
+      '@grokpulse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
+
+  services/market-stream:
+    dependencies:
+      '@grokpulse/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@grokpulse/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@grokpulse/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
+      '@grokpulse/polymarket':
+        specifier: workspace:*
+        version: link:../../packages/polymarket
+      '@grokpulse/redis':
+        specifier: workspace:*
+        version: link:../../packages/redis
+      '@grokpulse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
+
 packages:
 
   '@adobe/css-tools@4.5.0':
