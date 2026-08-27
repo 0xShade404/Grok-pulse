@@ -1,0 +1,38 @@
+{
+  "name": "@grokpulse/trading-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@grokpulse/types": "workspace:*",
+    "@grokpulse/risk": "workspace:*",
+    "@grokpulse/polymarket": "workspace:*",
+    "@grokpulse/redis": "workspace:*",
+    "@grokpulse/database": "workspace:*",
+    "@grokpulse/config": "workspace:*",
+    "@grokpulse/logging": "workspace:*"
+  },
+  "devDependencies": {
+    "@polymarket/clob-client": "^5.8.1",
+    "@types/ioredis-mock": "^8.2.8",
+    "ioredis-mock": "^8.13.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
