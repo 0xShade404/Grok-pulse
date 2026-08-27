@@ -1,0 +1,199 @@
+name: Deploy
+
+# CLAUDE.md section 60's deployment pipeline:
+#   main -> build -> test -> deploy staging -> smoke tests -> production
+#
+# `build-and-test` and `assert-live-trading-disabled` below are REAL,
+# working jobs -- they run on every push to main. Everything past them
+# (`deploy-staging`, `smoke-tests-staging`, `deploy-production`) is a
+# documented SKELETON: this repo has no AWS/Vercel/registry credentials
+# configured (no such secrets exist in this repo), so those jobs are
+# guarded with `if: false` and contain commented-out placeholder steps
+# rather than commands that would fail on every merge to main. Wiring them
+# up for real means, at minimum:
+#   1. Deciding on real infra (see infra/terraform/README.md -- this
+#      repo deliberately does not invent Terraform against a
+#      nonexistent AWS account).
+#   2. Adding the resulting deploy credentials as repository/environment
+#      secrets (e.g. AWS_ROLE_ARN for OIDC, VERCEL_TOKEN, a container
+#      registry token).
+#   3. Flipping each `if: false` below to a real condition (e.g.
+#      `if: github.ref == 'refs/heads/main'`) once step 2 is done.
+#   4. Filling in the placeholder `run:` blocks with real deploy commands.
+#
+# CLAUDE.md section 60 / 61: live trading must never automatically enable
+# merely because production deployed. `assert-live-trading-disabled` makes
+# that assertion an enforced CI step (over .env.example, the template every
+# real environment's config is derived from), not just a comment.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # never cancel a deploy mid-flight
+
+env:
+  PNPM_VERSION: "9.12.0"
+  NODE_VERSION: "20"
+
+jobs:
+  # -------------------------------------------------------------------
+  # REAL: build + test (same as ci.yml's build-test job)
+  # -------------------------------------------------------------------
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, typecheck, test, build
+        run: pnpm turbo run lint typecheck test build
+
+  # -------------------------------------------------------------------
+  # REAL: staging must never come up with live trading enabled.
+  # -------------------------------------------------------------------
+  assert-live-trading-disabled:
+    name: Assert ENABLE_LIVE_TRADING=false stays the default
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check .env.example
+        run: |
+          if ! grep -qx 'ENABLE_LIVE_TRADING=false' .env.example; then
+            echo "::error::.env.example must default ENABLE_LIVE_TRADING=false (CLAUDE.md sections 22, 61, 96). Live trading must require explicit, deliberate opt-in outside of this template -- it must never become the shipped default." >&2
+            exit 1
+          fi
+          echo "ENABLE_LIVE_TRADING=false confirmed as the template default."
+
+  # -------------------------------------------------------------------
+  # SKELETON: deploy the built artifacts to staging.
+  #
+  # Staging (CLAUDE.md section 61) must run with ENABLE_LIVE_TRADING=false
+  # -- all execution there is paper trading. Whatever secret/variable
+  # mechanism the real deploy target uses (e.g. an ECS task definition's
+  # environment, a Vercel project's env vars) must set that explicitly for
+  # the staging environment; do not rely only on .env.example's default.
+  # -------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    needs: [build-and-test, assert-live-trading-disabled]
+    # Off by default: no `DEPLOY_TO_STAGING_ENABLED` repo/environment
+    # variable exists yet. Set it to "true" once real staging infra +
+    # credentials exist, instead of editing this condition.
+    if: vars.DEPLOY_TO_STAGING_ENABLED == 'true'
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- apps/web -> Vercel (CLAUDE.md section 8) ---------------------
+      # - name: Deploy web to Vercel (staging)
+      #   run: npx vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --scope=<team> --env ENABLE_LIVE_TRADING=false
+      #   working-directory: apps/web
+
+      # --- backend services -> AWS ECS/Fargate (CLAUDE.md section 8) ----
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      #     aws-region: <region>
+      #
+      # - name: Log in to container registry
+      #   run: aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+      #
+      # - name: Build & push service images
+      #   run: |
+      #     for svc in api market-scanner market-stream settlement; do
+      #       docker build -f infra/docker/$svc.Dockerfile -t <registry>/grokpulse-$svc:${{ github.sha }} .
+      #       docker push <registry>/grokpulse-$svc:${{ github.sha }}
+      #     done
+      #
+      # - name: Update ECS services (staging cluster)
+      #   run: |
+      #     for svc in api market-scanner market-stream settlement; do
+      #       aws ecs update-service --cluster grokpulse-staging --service $svc --force-new-deployment
+      #     done
+
+      - name: Placeholder
+        run: echo "deploy-staging is a documented skeleton -- see the comment block at the top of this workflow file."
+
+  # -------------------------------------------------------------------
+  # SKELETON: smoke test the staging deployment.
+  # -------------------------------------------------------------------
+  smoke-tests-staging:
+    name: Smoke test staging
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    # Redundant with deploy-staging's own gate (a skipped `needs` job
+    # skips its dependents by default) -- kept explicit so this job's
+    # intent reads correctly on its own.
+    if: vars.DEPLOY_TO_STAGING_ENABLED == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # - name: Hit staging health endpoints
+      #   run: |
+      #     curl -sSf "${{ vars.STAGING_API_URL }}/health"
+      #     curl -sSf "${{ vars.STAGING_API_URL }}/health/ready"
+      #     curl -sSf "${{ vars.STAGING_APP_URL }}/"
+      #
+      # - name: Confirm staging is not live-trading
+      #   run: |
+      #     mode=$(curl -sSf "${{ vars.STAGING_API_URL }}/health/ready" | jq -r '.enableLiveTrading')
+      #     test "$mode" = "false"
+
+      - name: Placeholder
+        run: echo "smoke-tests-staging is a documented skeleton -- see the comment block at the top of this workflow file."
+
+  # -------------------------------------------------------------------
+  # SKELETON: promote to production. This should require a human
+  # approval gate (a GitHub Environment with required reviewers), not
+  # fire automatically even once the above are real.
+  # -------------------------------------------------------------------
+  deploy-production:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    needs: smoke-tests-staging
+    # Off by default, same as deploy-staging above. Flip once staging is
+    # real AND a required-reviewers environment protection rule is
+    # configured on the "production" GitHub Environment -- that reviewer
+    # gate, not this condition, should be the real control once live.
+    if: vars.DEPLOY_TO_PRODUCTION_ENABLED == 'true'
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same shape as deploy-staging, targeting the production cluster/
+      # project. Per CLAUDE.md sections 22/61/83/96: production must
+      # require EXPLICIT, separate operator action to enable live trading
+      # -- this deploy job enables the PAPER-trading production
+      # application; it must never itself flip ENABLE_LIVE_TRADING to
+      # true. See CLAUDE.md section 83 (“Live Trading Definition of
+      # Done”) for the full checklist that must be satisfied first.
+
+      - name: Placeholder
+        run: echo "deploy-production is a documented skeleton -- see the comment block at the top of this workflow file."

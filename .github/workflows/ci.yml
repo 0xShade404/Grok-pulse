@@ -1,0 +1,161 @@
+name: CI
+
+# CLAUDE.md section 60:
+#   Pull Request -> Install -> Lint -> Typecheck -> Unit Tests ->
+#   Integration Tests -> Build -> Security Checks
+#
+# `build-test` runs install/lint/typecheck/test/build as one `turbo`
+# invocation (turbo's own task graph + caching makes looping over every
+# package by hand unnecessary). `lockfile-check`, `integration-smoke`, and
+# `security` are separate jobs so a failure in any one of them is reported
+# distinctly rather than as an undifferentiated red X on one giant job.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: "9.12.0"
+  NODE_VERSION: "20"
+
+jobs:
+  # -------------------------------------------------------------------
+  # Install -> Lint -> Typecheck -> Unit Tests -> Build
+  # -------------------------------------------------------------------
+  build-test:
+    name: Install, Lint, Typecheck, Test, Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # A single turbo invocation for lint+typecheck+test+build lets turbo
+      # build one combined task graph (respecting each task's `dependsOn`
+      # in turbo.json) and cache per-package results, instead of four
+      # separate `pnpm -r run <script>` passes.
+      - name: Lint, typecheck, test, build
+        run: pnpm turbo run lint typecheck test build
+
+  # -------------------------------------------------------------------
+  # Lockfile drift guard: a `--frozen-lockfile` install already refuses
+  # to proceed if package.json and pnpm-lock.yaml disagree, but this adds
+  # an explicit `git diff` check as a second, independent guard (this
+  # repo's own history has needed manual lockfile-drift fixes after merges
+  # a few times, per CLAUDE.md's engineering notes on this project).
+  # -------------------------------------------------------------------
+  lockfile-check:
+    name: Lockfile freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install with frozen lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Fail if pnpm-lock.yaml changed
+        run: |
+          if ! git diff --quiet -- pnpm-lock.yaml; then
+            echo "::error::pnpm-lock.yaml is out of date relative to the package.json files in this PR. Run 'pnpm install' locally and commit the updated lockfile." >&2
+            git diff -- pnpm-lock.yaml
+            exit 1
+          fi
+          echo "pnpm-lock.yaml is up to date."
+
+  # -------------------------------------------------------------------
+  # Integration tests: this repo currently has none beyond the unit tests
+  # already covered by `build-test` above -- no package's test suite spins
+  # up a real Postgres/Redis (a deliberate, explicit scope decision made
+  # by every prior agent working on this repo; see infra/docker/README.md
+  # and each package's test files). This job is a reasonable stand-in
+  # CLAUDE.md section 60's "Integration Tests" stage: it proves the actual
+  # docker-compose.yml stack (the real TimescaleDB + Redis this application
+  # depends on) starts and passes its healthchecks, without claiming to
+  # exercise any application code against them.
+  # -------------------------------------------------------------------
+  integration-smoke:
+    name: Integration smoke (docker compose healthchecks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start postgres + redis
+        run: docker compose up -d --wait postgres redis
+
+      - name: Show container status
+        if: always()
+        run: docker compose ps
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # -------------------------------------------------------------------
+  # Security checks
+  # -------------------------------------------------------------------
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks needs full history to scan past commits
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # CLAUDE.md section 89: no hard-coded production secrets. gitleaks
+      # scans for accidentally committed credentials/keys; free, no
+      # credentials or paid license required for this usage.
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fails the job on any high-or-above severity advisory in the
+      # dependency tree.
+      - name: Dependency audit
+        run: pnpm audit --audit-level=high
