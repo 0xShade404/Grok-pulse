@@ -266,6 +266,59 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
 
+  services/feature-engine:
+    dependencies:
+      '@grokpulse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
+
+  services/signal-engine:
+    dependencies:
+      '@grokpulse/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@grokpulse/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@grokpulse/feature-engine':
+        specifier: workspace:*
+        version: link:../feature-engine
+      '@grokpulse/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
+      '@grokpulse/redis':
+        specifier: workspace:*
+        version: link:../../packages/redis
+      '@grokpulse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/ioredis-mock':
+        specifier: ^8.2.8
+        version: 8.2.8(ioredis@5.11.1)
+      ioredis-mock:
+        specifier: ^8.13.1
+        version: 8.13.1(@types/ioredis-mock@8.2.8(ioredis@5.11.1))(ioredis@5.11.1)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
+
 packages:
 
   '@adobe/css-tools@4.5.0':
