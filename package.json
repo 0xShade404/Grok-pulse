@@ -2,6 +2,7 @@
   "name": "grokpulse",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "Real-time trading terminal for short-duration Polymarket prediction markets",
   "engines": {
     "node": ">=20.0.0",
