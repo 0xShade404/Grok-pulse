@@ -7,3 +7,4 @@ export * from "./order.js";
 export * from "./agent.js";
 export * from "./agent-port.js";
 export * from "./events.js";
+export * from "./auth.js";
