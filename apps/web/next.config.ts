@@ -38,6 +38,26 @@ const UNRESOLVABLE_X402_SPECIFIERS = [
   "@x402/svm/exact/v1/client",
 ];
 
+/**
+ * Two more known-benign optional-dependency warnings from the same wallet
+ * stack, silenced the same way:
+ *
+ *   - `@react-native-async-storage/async-storage`: an optional peer of
+ *     `@metamask/sdk` (pulled in via `@wagmi/connectors`' `metaMask`
+ *     connector) used only for its React Native storage backend -- this is
+ *     a web app, never RN, so the code path that would need it never runs.
+ *   - `pino-pretty`: an optional dev-only pretty-printer for `pino`, pulled
+ *     in transitively via `@walletconnect/logger` (used by the optional
+ *     `walletConnect` connector). Production logging never uses it.
+ *
+ * Both are resolved to an empty module rather than left to warn/fail, since
+ * neither is ever exercised by this app's actual code paths.
+ */
+const UNRESOLVABLE_OPTIONAL_WALLET_DEPS = [
+  "@react-native-async-storage/async-storage",
+  "pino-pretty",
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@grokpulse/types"],
@@ -52,6 +72,7 @@ const nextConfig: NextConfig = {
     config.resolve.alias = {
       ...config.resolve.alias,
       ...Object.fromEntries(UNRESOLVABLE_X402_SPECIFIERS.map((spec) => [spec, false])),
+      ...Object.fromEntries(UNRESOLVABLE_OPTIONAL_WALLET_DEPS.map((spec) => [spec, false])),
     };
     return config;
   },
