@@ -1,0 +1,126 @@
+import type { AgentAnalysisContext } from "@grokpulse/types";
+
+/** Build a complete, schema-valid `AgentAnalysisContext` for tests, with
+ * overrides for the fields a given test cares about. Mirrors the shape of
+ * CLAUDE.md section 67's worked example. */
+export function buildTestContext(
+  overrides: Partial<AgentAnalysisContext> = {},
+): AgentAnalysisContext {
+  const base: AgentAnalysisContext = {
+    market: {
+      id: "11111111-1111-4111-8111-111111111111",
+      conditionId: "cond-1",
+      slug: "btc-5m-118250",
+      question: "Will BTC be above $118,250 at 14:05 UTC?",
+      asset: "BTC",
+      yesTokenId: "yes-token-1",
+      noTokenId: "no-token-1",
+      strike: 118250,
+      startTime: "2026-08-27T14:00:00.000Z",
+      endTime: "2026-08-27T14:05:00.000Z",
+      tickSize: "0.01",
+      negRisk: false,
+      active: true,
+      closed: false,
+      resolved: false,
+      lifecycleState: "ANALYZING",
+    },
+    countdown: {
+      marketId: "11111111-1111-4111-8111-111111111111",
+      serverNow: "2026-08-27T14:02:23.000Z",
+      marketEndTime: "2026-08-27T14:05:00.000Z",
+      timeRemainingSeconds: 157,
+      tradingRestriction: "NORMAL",
+    },
+    underlying: {
+      asset: "BTC",
+      source: "coinbase",
+      price: 118310,
+      bid: 118309.5,
+      ask: 118310.5,
+      spread: 1,
+      volume: 12.4,
+      timestamp: "2026-08-27T14:02:23.000Z",
+    },
+    features: {
+      marketId: "11111111-1111-4111-8111-111111111111",
+      asset: "BTC",
+      timestamp: "2026-08-27T14:02:23.000Z",
+      priceReturn1s: 0.0001,
+      priceReturn5s: 0.0008,
+      priceReturn15s: 0.0015,
+      priceReturn30s: 0.0021,
+      priceReturn60s: 0.0037,
+      distanceFromStrike: 60,
+      realizedVolatility: 0.004,
+      volumeDelta: 0.3,
+      orderbookImbalance: 0.18,
+      spread: 0.02,
+      marketProbability: 0.63,
+      probabilityChange5s: 0.004,
+      probabilityChange15s: 0.011,
+      timeToExpirySeconds: 157,
+    },
+    quantPrediction: {
+      probabilityYes: 0.69,
+      probabilityNo: 0.31,
+      confidence: 0.72,
+    },
+    orderBookSummary: {
+      yes: {
+        marketId: "11111111-1111-4111-8111-111111111111",
+        timestamp: "2026-08-27T14:02:23.000Z",
+        side: "YES",
+        bestBid: 0.62,
+        bestAsk: 0.64,
+        midpoint: 0.63,
+        spread: 0.02,
+        spreadPct: 0.0317,
+        depthUsd: 850,
+      },
+      no: {
+        marketId: "11111111-1111-4111-8111-111111111111",
+        timestamp: "2026-08-27T14:02:23.000Z",
+        side: "NO",
+        bestBid: 0.36,
+        bestAsk: 0.38,
+        midpoint: 0.37,
+        spread: 0.02,
+        spreadPct: 0.054,
+        depthUsd: 620,
+      },
+    },
+    recentTrades: [
+      {
+        marketId: "11111111-1111-4111-8111-111111111111",
+        timestamp: "2026-08-27T14:02:20.000Z",
+        side: "YES",
+        price: 0.63,
+        size: 40,
+      },
+      {
+        marketId: "11111111-1111-4111-8111-111111111111",
+        timestamp: "2026-08-27T14:02:21.500Z",
+        side: "YES",
+        price: 0.635,
+        size: 25,
+      },
+    ],
+    currentPosition: null,
+    riskLimits: {
+      maxTradeUsd: 25,
+      maxPositionUsd: 100,
+      maxDailyLossUsd: 100,
+      minimumEdge: 0.04,
+      minimumConfidence: 0.6,
+      minimumLiquidityUsd: 200,
+      maximumSlippage: 0.02,
+      minimumTimeRemainingSeconds: 30,
+      maxOpenPositions: 3,
+      enableLiveTrading: false,
+    },
+    strategyVersion: "grokpulse-btc-5m@0.1.0",
+  };
+
+  return { ...base, ...overrides };
+}

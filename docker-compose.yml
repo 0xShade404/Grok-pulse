@@ -1,0 +1,202 @@
+# GrokPulse local development stack (CLAUDE.md sections 58-59).
+#
+# By default (`docker compose up`) this brings up only the stateful backing
+# services -- `postgres` (TimescaleDB) and `redis` -- matching section 59's
+# expectation that day-to-day local development runs the app/worker
+# processes directly via `pnpm dev`, against these two composed containers.
+#
+# The application/worker containers are ALSO defined here, behind the
+# `full` profile, as a nice-to-have full-stack option (`docker compose
+# --profile full up --build`) -- e.g. to sanity-check a built image before
+# a deploy, or to run something without a local Node toolchain. They are
+# NOT required for normal local development and are not started by a
+# plain `docker compose up`.
+#
+# Copy .env.example to .env before running this file -- every credential
+# and port below matches .env.example's defaults exactly.
+
+name: grokpulse
+
+services:
+  # ---------------------------------------------------------------------
+  # Stateful backing services (always started)
+  # ---------------------------------------------------------------------
+
+  postgres:
+    # packages/database/src/migrations/0001_timescale_hypertables.sql
+    # requires the `timescaledb` extension (see that file), so this uses
+    # the timescale/timescaledb image rather than plain `postgres`.
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: grokpulse-postgres
+    restart: unless-stopped
+    environment:
+      # Matches DATABASE_URL=postgres://grokpulse:grokpulse@localhost:5432/grokpulse
+      # in .env.example. Override via .env for anything other than local dev.
+      POSTGRES_USER: ${POSTGRES_USER:-grokpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grokpulse}
+      POSTGRES_DB: ${POSTGRES_DB:-grokpulse}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-grokpulse} -d ${POSTGRES_DB:-grokpulse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: grokpulse-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ---------------------------------------------------------------------
+  # Application / worker services -- opt-in via `--profile full`.
+  #
+  # `api` and `settlement` reference services that had not landed in this
+  # worktree yet when this file was written (other agents are building
+  # them in parallel -- see infra/docker/README.md); `--profile full` will
+  # only succeed for them once those packages exist. `backtester` is a
+  # one-shot batch job, not a resident process -- it deliberately has no
+  # `restart` policy and is meant to be invoked with
+  # `docker compose run --rm backtester --strategy ... --from ... --to ...`
+  # rather than left running by `up`.
+  # ---------------------------------------------------------------------
+
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    container_name: grokpulse-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment: &app-env
+      NODE_ENV: ${NODE_ENV:-development}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      API_URL: ${API_URL:-http://localhost:4000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-grokpulse}:${POSTGRES_PASSWORD:-grokpulse}@postgres:5432/${POSTGRES_DB:-grokpulse}
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:-replace-with-a-long-random-string}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      XAI_MODEL: ${XAI_MODEL:-grok-4}
+      POLYMARKET_API_KEY: ${POLYMARKET_API_KEY:-}
+      POLYMARKET_API_SECRET: ${POLYMARKET_API_SECRET:-}
+      POLYMARKET_API_PASSPHRASE: ${POLYMARKET_API_PASSPHRASE:-}
+      POLYMARKET_CLOB_HOST: ${POLYMARKET_CLOB_HOST:-https://clob.polymarket.com}
+      POLYMARKET_CHAIN_ID: ${POLYMARKET_CHAIN_ID:-137}
+      WALLET_PROVIDER: ${WALLET_PROVIDER:-}
+      WALLET_ADDRESS: ${WALLET_ADDRESS:-}
+      COINBASE_WS_URL: ${COINBASE_WS_URL:-wss://advanced-trade-ws.coinbase.com}
+      BINANCE_WS_URL: ${BINANCE_WS_URL:-wss://stream.binance.com:9443/ws}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      PROMETHEUS_PORT: ${PROMETHEUS_PORT:-9464}
+      # Live trading must NEVER default to true (CLAUDE.md sections 22, 61,
+      # 96). This is not overridable by a bare `docker compose up`; a real
+      # deployment must set it explicitly out-of-band.
+      ENABLE_LIVE_TRADING: "false"
+      ENABLE_PAPER_TRADING: ${ENABLE_PAPER_TRADING:-true}
+      ENABLE_GROK: ${ENABLE_GROK:-true}
+      ENABLE_BACKTESTING: ${ENABLE_BACKTESTING:-true}
+      ENABLE_BTC: ${ENABLE_BTC:-true}
+      ENABLE_ETH: ${ENABLE_ETH:-true}
+      ENABLE_AUTO_EXECUTION: "false"
+      ENABLE_MOBILE_TRADING: ${ENABLE_MOBILE_TRADING:-false}
+      DATA_SOURCE: ${DATA_SOURCE:-mock}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    container_name: grokpulse-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  market-scanner:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: infra/docker/market-scanner.Dockerfile
+    container_name: grokpulse-market-scanner
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  market-stream:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: infra/docker/market-stream.Dockerfile
+    container_name: grokpulse-market-stream
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  settlement:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: infra/docker/settlement.Dockerfile
+    container_name: grokpulse-settlement
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backtester:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: infra/docker/backtester.Dockerfile
+    container_name: grokpulse-backtester
+    # No `restart` policy: this is a one-shot batch job, invoked with
+    # `docker compose run --rm backtester -- --strategy ... --from ... --to ...`,
+    # not a resident service `up` should keep running.
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

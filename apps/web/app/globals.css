@@ -1,0 +1,116 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * GrokPulse design tokens.
+ *
+ * The terminal is deliberately dark-first and permanently dark, in the
+ * spirit of a professional trading terminal (CLAUDE.md section 49) -- there
+ * is no light-mode toggle. Colors are exposed as Tailwind theme tokens via
+ * @theme so components can use e.g. `bg-panel`, `text-buy`, `border-warn`.
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+
+  --color-bg: #090c11;
+  --color-bg-elevated: #0d1117;
+  --color-panel: #10151c;
+  --color-panel-2: #151b24;
+  --color-border: #212934;
+  --color-border-strong: #2e3947;
+
+  --color-ink: #e6edf5;
+  --color-ink-dim: #99a6b8;
+  --color-ink-faint: #626d7d;
+
+  --color-accent: #3b82f6;
+  --color-accent-dim: #1d4ed8;
+  --color-accent-soft: #17253f;
+
+  --color-buy: #22c55e;
+  --color-buy-soft: #12271a;
+  --color-sell: #f43f5e;
+  --color-sell-soft: #2a1119;
+
+  --color-warn: #f59e0b;
+  --color-warn-soft: #2a1d05;
+  --color-danger: #ef4444;
+  --color-danger-soft: #2a1010;
+  --color-ok: #22c55e;
+  --color-ok-soft: #10241a;
+  --color-info: #3b82f6;
+  --color-info-soft: #12213a;
+  --color-neutral: #8b96a5;
+  --color-neutral-soft: #1a2029;
+
+  --animate-pulse-slow: pulse-slow 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings:
+    "tnum" 1,
+    "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular numerals everywhere a number can update in place, so digits do
+   not jitter horizontally as values tick (CLAUDE.md section 49: dense,
+   professional, high information density). */
+.tabular-nums,
+.num {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background-color: var(--color-accent-dim);
+  color: white;
+}
+
+/* Thin, unobtrusive scrollbars for dense panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background-color: transparent;
+}
