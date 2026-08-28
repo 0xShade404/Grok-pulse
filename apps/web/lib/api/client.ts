@@ -39,9 +39,50 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
     headers: { "content-type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
-    throw new ApiError(`Request to ${path} failed with ${res.status}`, res.status, path);
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      // Non-JSON error body -- fall through with no parsed detail.
+    }
+    const message =
+      (typeof body === "object" && body && "message" in body && typeof (body as { message?: unknown }).message === "string"
+        ? (body as { message: string }).message
+        : undefined) ?? `Request to ${path} failed with ${res.status}`;
+    throw new ApiError(message, res.status, path);
   }
   return (await res.json()) as T;
+}
+
+/**
+ * `fetchJson`, but with `Authorization: Bearer <token>` attached from
+ * `authStore` (CLAUDE.md section 40/51: every authenticated endpoint
+ * requires a verified user; the server resolves `userId` from this token,
+ * never from a client-supplied field). Throws `ApiError` with status 401
+ * without making a network call at all when no token is present, so a
+ * logged-out caller fails the same way an expired-token call would.
+ *
+ * This bypasses `resolveMockOrFetch`/`DATA_SOURCE` entirely and always
+ * calls the real API -- unlike the Phase 1 market/portfolio/etc. data,
+ * account creation, wallet linking, and live trading are the actual feature
+ * this task wires up, not something with a meaningful "mock" fixture
+ * behind it. `DATA_SOURCE=mock` only ever affected the earlier read-only
+ * fixtures.
+ */
+export async function authFetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  // Imported lazily (function-scope) rather than at module scope to avoid a
+  // circular import: `authStore` never imports this module, but keeping the
+  // dependency direction explicit and one-way here is worth the minor
+  // indirection.
+  const { useAuthStore } = await import("@/lib/stores/authStore");
+  const token = useAuthStore.getState().accessToken;
+  if (!token) {
+    throw new ApiError("Not authenticated.", 401, path);
+  }
+  return fetchJson<T>(path, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, ...init?.headers },
+  });
 }
 
 /**
