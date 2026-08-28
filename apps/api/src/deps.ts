@@ -11,16 +11,26 @@ import type {
   RiskEventsRepository,
   SignalsRepository,
   TradesRepository,
+  UsersRepository,
+  WalletsRepository,
 } from "@grokpulse/database";
 import type { GrokPulseConfig } from "@grokpulse/config";
 import type { Logger } from "@grokpulse/logging";
+import type { PolymarketRestClient } from "@grokpulse/polymarket";
 import type { Redis } from "@grokpulse/redis";
 import type { RiskEngine } from "@grokpulse/risk";
-import type { ExecutionAdapter, OrderManager } from "@grokpulse/trading-engine";
+import type {
+  ExecutionAdapter,
+  OrderManager,
+  PolymarketMarketDataProvider,
+  PolymarketOrderLookup,
+} from "@grokpulse/trading-engine";
 import type { RiskConfig } from "@grokpulse/types";
 import type { SignalEngine } from "@grokpulse/signal-engine";
 import type { QuantModel } from "@grokpulse/feature-engine";
 import type { AuthVerifier } from "./auth/verifier.js";
+import type { EmailSender } from "./auth/email-sender.js";
+import type { FundingChecker } from "./lib/funding-checker.js";
 import type { HealthChecker } from "./lib/risk-input.js";
 import type { AppMetrics } from "./lib/metrics.js";
 import type { StreamBroadcaster } from "./lib/stream-broadcaster.js";
@@ -50,6 +60,22 @@ export interface AppRepos {
   agentRuns: Pick<AgentRunsRepository, "create" | "findById" | "listForMarket">;
   agentToolCalls: Pick<AgentToolCallsRepository, "create" | "listForRun">;
   riskEvents: Pick<RiskEventsRepository, "record" | "listRecentForUser" | "listRecentForMarket">;
+  users: Pick<UsersRepository, "findById" | "findByUsername" | "findByEmail" | "create" | "setPasswordHash" | "setLiveTradingEnabled">;
+  wallets: Pick<WalletsRepository, "listForUser" | "findByAddress" | "create" | "markVerified">;
+}
+
+/**
+ * Everything `POST /api/live/orders/prepare` and `.../submit` need to talk
+ * to the real Polymarket CLOB (CLAUDE.md section 91: only the execution
+ * adapter differs between PAPER and LIVE -- this is that LIVE-only
+ * infrastructure, injected once here rather than constructed ad hoc inside
+ * a route handler). `restClient` holds only L2 API credentials, never a
+ * wallet private key (see `@grokpulse/polymarket`'s `rest-client.ts`).
+ */
+export interface AppPolymarketDeps {
+  restClient: PolymarketRestClient;
+  marketData: PolymarketMarketDataProvider;
+  orderLookup: PolymarketOrderLookup;
 }
 
 export interface AppBroadcasters {
@@ -88,6 +114,14 @@ export interface AppDeps {
   healthChecker: HealthChecker;
   metrics: AppMetrics;
   broadcasters: AppBroadcasters;
+  /** Placeholder outbound-email seam for password reset -- see
+   * `auth/email-sender.ts`. */
+  emailSender: EmailSender;
+  /** Real (or fail-closed-unconfigured) on-chain USDC funding check for
+   * live orders -- see `lib/funding-checker.ts`. */
+  fundingChecker: FundingChecker;
+  /** LIVE-only Polymarket infrastructure -- see `AppPolymarketDeps`. */
+  polymarket: AppPolymarketDeps;
   /** Injectable clock, defaults to `() => new Date()`. Tests can pin "now". */
   now?: () => Date;
 }

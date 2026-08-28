@@ -166,33 +166,6 @@ describe("POST /api/paper/orders", () => {
   });
 });
 
-describe("POST /api/live/orders", () => {
-  it("always returns 501, regardless of input", async () => {
-    const ctx = buildTestApp();
-    const token = await ctx.signToken("user-1");
-    const res = await ctx.app.inject({
-      method: "POST",
-      url: "/api/live/orders",
-      headers: { authorization: `Bearer ${token}` },
-      payload: { anything: "goes", marketId: "x", side: "YES", price: 2, sizeUsd: -5 },
-    });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().error).toBe("LIVE_TRADING_NOT_IMPLEMENTED");
-  });
-
-  it("returns 501 even with an empty body", async () => {
-    const ctx = buildTestApp();
-    const token = await ctx.signToken("user-1");
-    const res = await ctx.app.inject({
-      method: "POST",
-      url: "/api/live/orders",
-      headers: { authorization: `Bearer ${token}` },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(501);
-  });
-});
-
 describe("DELETE /api/orders/:id", () => {
   it("refuses to cancel another user's order", async () => {
     const executionAdapter = new FakeExecutionAdapter();

@@ -28,6 +28,19 @@ const EnvSchema = z.object({
   WALLET_PROVIDER: z.string().optional().default(""),
   WALLET_ADDRESS: z.string().optional().default(""),
 
+  // On-chain USDC funding check for non-custodial live orders (CLAUDE.md
+  // section 19: "account funded" must be independently verified, not
+  // assumed). Both default to "" (disabled) so existing deployments aren't
+  // broken by this addition -- apps/api's funding checker treats either
+  // being unset as "cannot verify balance" and FAILS CLOSED (treats the
+  // account as unfunded) rather than ever defaulting to `true`. The correct
+  // current USDC contract address on Polygon PoS (native vs. bridged
+  // USDC.e) cannot be verified from this sandbox, so it is intentionally a
+  // configurable value rather than a hardcoded one -- an operator must set
+  // it explicitly before live trading's funding check can ever pass.
+  POLYGON_RPC_URL: z.string().optional().default(""),
+  POLYGON_USDC_ADDRESS: z.string().optional().default(""),
+
   COINBASE_WS_URL: z.string().url().default("wss://advanced-trade-ws.coinbase.com"),
   BINANCE_WS_URL: z.string().url().default("wss://stream.binance.com:9443/ws"),
 

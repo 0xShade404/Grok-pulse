@@ -1,6 +1,9 @@
 import { Writable } from "node:stream";
 import RedisMock from "ioredis-mock";
 import { SignJWT } from "jose";
+import { Chain } from "@polymarket/clob-client";
+import { PolymarketRestClient, type ClobClientLike } from "@grokpulse/polymarket";
+import type { PolymarketOrderLookup } from "@grokpulse/trading-engine";
 import { RiskEngine } from "@grokpulse/risk";
 import { DEFAULT_RISK_CONFIG, REDIS_STREAMS, type RiskConfig } from "@grokpulse/types";
 import { OrderManager } from "@grokpulse/trading-engine";
@@ -13,8 +16,11 @@ import type { AppDeps, AppRepos } from "../deps.js";
 import { JwtAuthVerifier } from "../auth/verifier.js";
 import { AppMetrics } from "../lib/metrics.js";
 import { StreamBroadcaster } from "../lib/stream-broadcaster.js";
+import { ApiPolymarketMarketDataProvider, NullPolymarketOrderLookup } from "../lib/polymarket-market-data.js";
 import { makeFakeRepos } from "./support.js";
 import { FakeExecutionAdapter } from "./fake-execution-adapter.js";
+import { FakeEmailSender } from "./fake-email-sender.js";
+import { FakeFundingChecker } from "./fake-funding-checker.js";
 import type { HealthChecker } from "../lib/risk-input.js";
 
 export const TEST_AUTH_SECRET = "test-only-auth-secret-not-a-real-credential";
@@ -42,11 +48,32 @@ function testConfig() {
   } as unknown as NodeJS.ProcessEnv);
 }
 
+/** Default fake `ClobClientLike` transport for the LIVE Polymarket REST
+ * client wired into every test app -- never a real network call. Tests
+ * that need specific behavior (e.g. asserting `postOrder` was called with
+ * particular args, or simulating a rejection) pass `polymarketClobClient`
+ * overrides via `BuildTestAppOptions`. */
+function defaultFakeClobClient(overrides: Partial<ClobClientLike> = {}): ClobClientLike {
+  return {
+    getMarkets: async () => ({ data: [] }),
+    getOrderBook: async () => ({ market: "test", asset_id: "test", bids: [], asks: [] }) as never,
+    getTrades: async () => [],
+    postOrder: async () => ({ orderID: "test-exchange-order-id" }),
+    cancelOrder: async () => ({}),
+    ...overrides,
+  };
+}
+
 export interface TestAppContext {
   app: ReturnType<typeof buildApp>;
   deps: AppDeps;
   repos: AppRepos;
   executionAdapter: FakeExecutionAdapter;
+  emailSender: FakeEmailSender;
+  fundingChecker: FakeFundingChecker;
+  /** The fake transport backing `deps.polymarket.restClient` -- assert
+   * against `postOrder`/`cancelOrder` calls in live-order-flow tests. */
+  polymarketClobClient: ClobClientLike;
   /** Sign a valid HS256 JWT for `userId`, for exercising authenticated routes. */
   signToken: (userId: string, options?: { expiresInSeconds?: number; secret?: string }) => Promise<string>;
 }
@@ -56,6 +83,13 @@ export interface BuildTestAppOptions {
   executionAdapter?: FakeExecutionAdapter;
   healthChecker?: HealthChecker;
   now?: () => Date;
+  emailSender?: FakeEmailSender;
+  /** Defaults to always-unfunded, matching production's fail-closed
+   * default when on-chain funding config is unset -- pass `new
+   * FakeFundingChecker(true)` to simulate a funded wallet. */
+  fundingChecker?: FakeFundingChecker;
+  polymarketClobClient?: Partial<ClobClientLike>;
+  polymarketOrderLookup?: PolymarketOrderLookup;
 }
 
 /**
@@ -91,6 +125,20 @@ export function buildTestApp(options: BuildTestAppOptions = {}): TestAppContext 
   });
 
   const authVerifier = new JwtAuthVerifier({ secret: config.AUTH_SECRET });
+  const emailSender = options.emailSender ?? new FakeEmailSender();
+  const fundingChecker = options.fundingChecker ?? new FakeFundingChecker(false);
+
+  const polymarketClobClient = defaultFakeClobClient(options.polymarketClobClient);
+  const polymarketRestClient = new PolymarketRestClient({
+    host: "https://clob.example.test",
+    chainId: Chain.POLYGON,
+    client: polymarketClobClient,
+  });
+  const polymarket: AppDeps["polymarket"] = {
+    restClient: polymarketRestClient,
+    marketData: new ApiPolymarketMarketDataProvider({ markets: repos.markets, redis }),
+    orderLookup: options.polymarketOrderLookup ?? new NullPolymarketOrderLookup(),
+  };
 
   const signalEngine = new SignalEngine({
     agentPort: new StubAgentAnalysisPort(),
@@ -132,6 +180,9 @@ export function buildTestApp(options: BuildTestAppOptions = {}): TestAppContext 
     metrics,
     broadcasters,
     now: options.now,
+    emailSender,
+    fundingChecker,
+    polymarket,
   };
 
   const app = buildApp(deps);
@@ -149,5 +200,5 @@ export function buildTestApp(options: BuildTestAppOptions = {}): TestAppContext 
       .sign(secret);
   };
 
-  return { app, deps, repos, executionAdapter, signToken };
+  return { app, deps, repos, executionAdapter, emailSender, fundingChecker, polymarketClobClient, signToken };
 }
