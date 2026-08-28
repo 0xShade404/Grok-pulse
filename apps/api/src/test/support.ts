@@ -18,12 +18,16 @@ import {
   type NewPositionRow,
   type NewRiskEventRow,
   type NewSignalRow,
+  type NewUserRow,
+  type NewWalletRow,
   type OrderRow,
   type PortfolioSnapshotRow,
   type PositionRow,
   type RiskEventRow,
   type SignalRow,
   type TradeRow,
+  type UserRow,
+  type WalletRow,
 } from "@grokpulse/database";
 import type { AppRepos } from "../deps.js";
 
@@ -423,6 +427,96 @@ export class FakeRiskEventsRepository {
   }
 }
 
+export class FakeUsersRepository {
+  readonly rows = new Map<string, UserRow>();
+
+  seed(row: UserRow): UserRow {
+    this.rows.set(row.id, row);
+    return row;
+  }
+
+  async findById(id: string): Promise<UserRow | undefined> {
+    return this.rows.get(id);
+  }
+
+  async findByUsername(username: string): Promise<UserRow | undefined> {
+    return [...this.rows.values()].find((r) => r.username === username);
+  }
+
+  async findByEmail(email: string): Promise<UserRow | undefined> {
+    return [...this.rows.values()].find((r) => r.email === email);
+  }
+
+  async create(input: NewUserRow): Promise<UserRow> {
+    const now = new Date();
+    const row: UserRow = {
+      id: randomUUID(),
+      username: input.username,
+      passwordHash: input.passwordHash,
+      email: input.email ?? null,
+      liveTradingEnabledAt: input.liveTradingEnabledAt ? new Date(input.liveTradingEnabledAt) : null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.rows.set(row.id, row);
+    return row;
+  }
+
+  async setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+    const row = this.rows.get(userId);
+    if (!row) return;
+    this.rows.set(userId, { ...row, passwordHash, updatedAt: new Date() });
+  }
+
+  async setEmail(userId: string, email: string | null): Promise<void> {
+    const row = this.rows.get(userId);
+    if (!row) return;
+    this.rows.set(userId, { ...row, email, updatedAt: new Date() });
+  }
+
+  async setLiveTradingEnabled(userId: string, enabled: boolean): Promise<void> {
+    const row = this.rows.get(userId);
+    if (!row) return;
+    this.rows.set(userId, { ...row, liveTradingEnabledAt: enabled ? new Date() : null, updatedAt: new Date() });
+  }
+}
+
+export class FakeWalletsRepository {
+  readonly rows = new Map<string, WalletRow>();
+
+  seed(row: WalletRow): WalletRow {
+    this.rows.set(row.id, row);
+    return row;
+  }
+
+  async listForUser(userId: string): Promise<WalletRow[]> {
+    return [...this.rows.values()].filter((r) => r.userId === userId);
+  }
+
+  async findByAddress(address: string): Promise<WalletRow | undefined> {
+    return [...this.rows.values()].find((r) => r.address === address);
+  }
+
+  async create(input: NewWalletRow): Promise<WalletRow> {
+    const row: WalletRow = {
+      id: randomUUID(),
+      userId: input.userId,
+      address: input.address,
+      provider: input.provider,
+      verifiedAt: input.verifiedAt ? new Date(input.verifiedAt) : null,
+      createdAt: new Date(),
+    };
+    this.rows.set(row.id, row);
+    return row;
+  }
+
+  async markVerified(walletId: string): Promise<void> {
+    const row = this.rows.get(walletId);
+    if (!row) return;
+    this.rows.set(walletId, { ...row, verifiedAt: new Date() });
+  }
+}
+
 export function makeFakeRepos(): AppRepos {
   return {
     markets: new FakeMarketsRepository(),
@@ -436,5 +530,7 @@ export function makeFakeRepos(): AppRepos {
     agentRuns: new FakeAgentRunsRepository(),
     agentToolCalls: new FakeAgentToolCallsRepository(),
     riskEvents: new FakeRiskEventsRepository(),
+    users: new FakeUsersRepository(),
+    wallets: new FakeWalletsRepository(),
   };
 }

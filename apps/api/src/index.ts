@@ -13,11 +13,14 @@ import {
   RiskEventsRepository,
   SignalsRepository,
   TradesRepository,
+  UsersRepository,
+  WalletsRepository,
 } from "@grokpulse/database";
 import { createRedisClient } from "@grokpulse/redis";
 import { REDIS_STREAMS, DEFAULT_RISK_CONFIG, type RiskConfig } from "@grokpulse/types";
 import { RiskEngine } from "@grokpulse/risk";
 import { OrderManager, PaperExecutionAdapter } from "@grokpulse/trading-engine";
+import { PolymarketRestClient, type Chain } from "@grokpulse/polymarket";
 import { SignalEngine, StubAgentAnalysisPort } from "@grokpulse/signal-engine";
 import { LogisticQuantModel } from "@grokpulse/feature-engine";
 import { GrokAgent } from "@grokpulse/grok-agent";
@@ -26,10 +29,13 @@ import type { AgentAnalysisPort } from "@grokpulse/types";
 import { buildApp } from "./app.js";
 import type { AppDeps, AppRepos } from "./deps.js";
 import { JwtAuthVerifier } from "./auth/verifier.js";
+import { ConsoleEmailSender } from "./auth/email-sender.js";
 import { SystemHealthChecker } from "./lib/health.js";
 import { AppMetrics } from "./lib/metrics.js";
 import { StreamBroadcaster } from "./lib/stream-broadcaster.js";
 import { ApiOrderBookProvider } from "./lib/order-book-provider.js";
+import { ApiPolymarketMarketDataProvider, NullPolymarketOrderLookup } from "./lib/polymarket-market-data.js";
+import { OnchainUsdcFundingChecker } from "./lib/funding-checker.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -56,6 +62,8 @@ async function main(): Promise<void> {
     agentRuns: new AgentRunsRepository(db),
     agentToolCalls: new AgentToolCallsRepository(db),
     riskEvents: new RiskEventsRepository(db),
+    users: new UsersRepository(db),
+    wallets: new WalletsRepository(db),
   };
 
   // Risk config: DEFAULT_RISK_CONFIG (@grokpulse/types) with the one field
@@ -81,6 +89,42 @@ async function main(): Promise<void> {
   });
 
   const authVerifier = new JwtAuthVerifier({ secret: config.AUTH_SECRET });
+  const emailSender = new ConsoleEmailSender(logger);
+
+  // LIVE-only Polymarket infrastructure (CLAUDE.md section 91: only the
+  // execution adapter differs between PAPER/LIVE -- this is what
+  // `POST /api/live/orders/submit` constructs a request-scoped
+  // `PolymarketExecutionAdapter` from). `restClient` holds only L2 API
+  // credentials (never a wallet private key, CLAUDE.md section 23) and is
+  // constructed unconditionally -- read-only endpoints work with no
+  // credentials, and `ENABLE_LIVE_TRADING`/the risk engine (not this
+  // client's mere existence) gate whether a live order is ever approved.
+  const polymarketRestClient = new PolymarketRestClient({
+    host: config.POLYMARKET_CLOB_HOST,
+    chainId: config.POLYMARKET_CHAIN_ID as Chain,
+    creds: config.POLYMARKET_API_KEY
+      ? {
+          key: config.POLYMARKET_API_KEY,
+          secret: config.POLYMARKET_API_SECRET,
+          passphrase: config.POLYMARKET_API_PASSPHRASE,
+        }
+      : undefined,
+  });
+  const polymarket: AppDeps["polymarket"] = {
+    restClient: polymarketRestClient,
+    marketData: new ApiPolymarketMarketDataProvider({ markets: repos.markets, redis }),
+    orderLookup: new NullPolymarketOrderLookup(),
+  };
+
+  // Fail-closed on-chain USDC funding check for live orders (CLAUDE.md
+  // section 19/56) -- degrades to always-unfunded when
+  // POLYGON_RPC_URL/POLYGON_USDC_ADDRESS are unset, never to `true`. See
+  // `lib/funding-checker.ts`.
+  const fundingChecker = new OnchainUsdcFundingChecker({
+    rpcUrl: config.POLYGON_RPC_URL,
+    usdcAddress: config.POLYGON_USDC_ADDRESS,
+    logger,
+  });
 
   // CLAUDE.md section 15/56: only wire a real GrokAgent when Grok is both
   // enabled and actually configured with an API key; otherwise fall back to
@@ -131,6 +175,9 @@ async function main(): Promise<void> {
     healthChecker,
     metrics,
     broadcasters,
+    emailSender,
+    fundingChecker,
+    polymarket,
   };
 
   const app = buildApp(deps);
