@@ -18,9 +18,17 @@ interface SettingsStoreState {
   /** Always false in Phase 1 -- there is no live trading path to enable. */
   liveTradingEnabled: boolean;
 
-  /** Local mock kill switch -- see components/KillSwitch.tsx. */
+  /** Local emergency stop. Live execution must fail closed while engaged. */
   killSwitchEngaged: boolean;
   setKillSwitchEngaged: (engaged: boolean) => void;
+
+  /** Conservative client-side limits; the server remains authoritative. */
+  maxOrderUsd: number;
+  dailyTradeLimit: number;
+  requireLiveConfirmation: boolean;
+  setMaxOrderUsd: (value: number) => void;
+  setDailyTradeLimit: (value: number) => void;
+  setRequireLiveConfirmation: (value: boolean) => void;
 
   strategyEnabled: boolean;
   setStrategyEnabled: (enabled: boolean) => void;
@@ -37,6 +45,13 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
 
   killSwitchEngaged: false,
   setKillSwitchEngaged: (engaged) => set({ killSwitchEngaged: engaged }),
+
+  maxOrderUsd: 25,
+  dailyTradeLimit: 10,
+  requireLiveConfirmation: true,
+  setMaxOrderUsd: (value) => set({ maxOrderUsd: Math.max(1, Math.min(1000, value)) }),
+  setDailyTradeLimit: (value) => set({ dailyTradeLimit: Math.max(1, Math.min(100, value)) }),
+  setRequireLiveConfirmation: (value) => set({ requireLiveConfirmation: value }),
 
   strategyEnabled: true,
   setStrategyEnabled: (enabled) => set({ strategyEnabled: enabled }),

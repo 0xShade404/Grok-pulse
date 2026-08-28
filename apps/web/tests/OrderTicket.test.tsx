@@ -34,6 +34,7 @@ describe("OrderTicket LIVE TRADE button", () => {
     useAuthStore.getState().logout();
     walletClientData = undefined;
     submitLiveTradeMock.mockReset();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
   function liveButton() {

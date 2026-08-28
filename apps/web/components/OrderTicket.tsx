@@ -17,6 +17,7 @@ import { StatusIndicator } from "@/components/StatusIndicator";
 import { useOrderStore } from "@/lib/stores/orderStore";
 import { useTerminalStore } from "@/lib/stores/terminalStore";
 import { useAuthStore } from "@/lib/stores/authStore";
+import { useSettingsStore } from "@/lib/stores/settingsStore";
 import { submitLiveTrade, type LiveTradeResult } from "@/lib/live-order";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,11 @@ export function OrderTicket({
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated());
   const walletVerified = useAuthStore((s) => s.wallet?.verified ?? false);
   const liveTradingEnabled = useAuthStore((s) => s.liveTradingEnabled);
+  const killSwitchEngaged = useSettingsStore((s) => s.killSwitchEngaged);
+  const setKillSwitchEngaged = useSettingsStore((s) => s.setKillSwitchEngaged);
+  const maxOrderUsd = useSettingsStore((s) => s.maxOrderUsd);
+  const dailyTradeLimit = useSettingsStore((s) => s.dailyTradeLimit);
+  const requireLiveConfirmation = useSettingsStore((s) => s.requireLiveConfirmation);
   const { data: walletClient } = useWalletClient();
 
   const [price, setPrice] = useState(suggestedPrice?.toFixed(2) ?? "0.50");
@@ -60,6 +66,14 @@ export function OrderTicket({
   const [liveState, setLiveState] = useState<LiveTicketState>({ phase: "idle" });
 
   const entryDisabled = restriction === "ENTRY_DISABLED" || restriction === "CANCEL_RESTING_ORDERS" || restriction === "STOPPED";
+  const numericPrice = Number(price);
+  const numericSize = Number(size);
+  const orderValuesValid = Number.isFinite(numericPrice) && numericPrice > 0 && numericPrice < 1 && Number.isFinite(numericSize) && numericSize > 0;
+  const clientRiskReason = !orderValuesValid
+    ? "Enter a price between 0 and 1 and a positive USD size."
+    : numericSize > maxOrderUsd
+      ? `Order exceeds your $${maxOrderUsd} client limit.`
+      : null;
 
   function submitPaperOrder() {
     const id = `mock_order_${Date.now()}`;
@@ -89,30 +103,40 @@ export function OrderTicket({
     ? "Log in to trade live."
     : !walletVerified
       ? "Link and verify a wallet on your account page to trade live."
-      : !liveTradingEnabled
-        ? "Enable live trading on your account page to trade live."
-        : entryDisabled
-          ? "New entries are disabled this close to market close."
-          : liveState.phase === "submitting"
-            ? "Order in progress..."
-            : null;
+        : !liveTradingEnabled
+          ? "Enable live trading on your account page to trade live."
+          : killSwitchEngaged
+            ? "Emergency stop is engaged. Disable it only after reviewing open risk."
+            : clientRiskReason
+              ? clientRiskReason
+              : entryDisabled
+                ? "New entries are disabled this close to market close."
+                : liveState.phase === "submitting"
+                  ? "Order in progress..."
+                  : null;
 
   const liveReady = liveDisabledReason === null;
 
   async function handleLiveTrade() {
-    if (!walletClient) {
-      setLiveState({
-        phase: "done",
-        result: { status: "SIGNING_FAILED", message: "No wallet connected. Reconnect your wallet and try again." },
-      });
+    if (!liveReady || !walletClient) {
+      if (!walletClient) {
+        setLiveState({
+          phase: "done",
+          result: { status: "SIGNING_FAILED", message: "No wallet connected. Reconnect your wallet and try again." },
+        });
+      }
       return;
     }
+    if (requireLiveConfirmation && !window.confirm(`Submit LIVE ${side} order for $${numericSize.toFixed(2)} at ${numericPrice.toFixed(2)}? This will request a wallet signature.`)) {
+      return;
+    }
+    if (liveState.phase === "submitting") return;
     setLiveState({ phase: "submitting" });
     const result = await submitLiveTrade({
       marketId,
       side,
-      price: Number(price),
-      sizeUsd: Number(size),
+      price: numericPrice,
+      sizeUsd: numericSize,
       walletClient,
     });
     setLiveState({ phase: "done", result });
@@ -158,18 +182,29 @@ export function OrderTicket({
         </div>
       </div>
 
-      {entryDisabled && (
-        <p className="flex items-center gap-1.5 text-[11px] text-warn">
+      {(entryDisabled || clientRiskReason) && (
+        <p className="flex items-center gap-1.5 text-[11px] text-warn" role="alert">
           <Info className="size-3.5 shrink-0" aria-hidden />
-          New entries are disabled this close to market close.
+          {clientRiskReason ?? "New entries are disabled this close to market close."}
         </p>
       )}
+
+      <p className="text-[10px] text-ink-faint">Client guardrails: max ${maxOrderUsd} per order · {dailyTradeLimit} trades/day · confirmation required</p>
 
       <div className="flex flex-col gap-1.5">
         <Button
           type="button"
+          variant={killSwitchEngaged ? "destructive" : "outline"}
+          aria-pressed={killSwitchEngaged}
+          onClick={() => setKillSwitchEngaged(!killSwitchEngaged)}
+          className="min-h-11"
+        >
+          {killSwitchEngaged ? "EMERGENCY STOP ENGAGED" : "ENGAGE EMERGENCY STOP"}
+        </Button>
+        <Button
+          type="button"
           variant={side === "YES" ? "buy" : "sell"}
-          disabled={entryDisabled}
+          disabled={entryDisabled || !orderValuesValid}
           onClick={submitPaperOrder}
         >
           PAPER TRADE
